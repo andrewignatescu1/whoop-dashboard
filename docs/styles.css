@@ -1,0 +1,39 @@
+/* ── Typography ── */
+body { font-family: 'Inter', system-ui, sans-serif; color: #1a1a1a; }
+h1, h2, h3 { font-weight: 600; letter-spacing: -0.02em; }
+.quarto-title { border-bottom: 2px solid #e5e5e5; padding-bottom: 0.5rem; }
+
+/* ── Navbar ── */
+.navbar { background-color: #111 !important; border-bottom: 1px solid #222; }
+.navbar-brand, .navbar .nav-link { color: #f0f0f0 !important; }
+.navbar .nav-link:hover { color: #ffffff !important; }
+
+/* ── Metric cards ── */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+.metric-card {
+  background: #f8f8f6;
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  border-left: 3px solid #111;
+}
+.metric-card .label { font-size: 0.75rem; color: #777; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.metric-card .value { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+.metric-card .sub { font-size: 0.75rem; color: #999; margin-top: 4px; }
+.metric-card.green { border-left-color: #1D9E75; }
+.metric-card.blue  { border-left-color: #3266ad; }
+.metric-card.red   { border-left-color: #E24B4A; }
+.metric-card.amber { border-left-color: #BA7517; }
+
+/* ── Callout tweaks ── */
+.callout { border-radius: 8px; }
+
+/* ── Plot captions ── */
+.figure-caption { font-size: 0.8rem; color: #888; font-style: italic; margin-top: 0.25rem; }
+
+/* ── Footer ── */
+.page-footer { background: #111; color: #888; font-size: 0.8rem; padding: 1rem; }
