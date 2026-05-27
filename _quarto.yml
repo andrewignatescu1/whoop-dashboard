@@ -1,0 +1,40 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "WHOOP · Personal Biometrics"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Overview
+      - href: recovery.qmd
+        text: Recovery & HRV
+      - href: sleep.qmd
+        text: Sleep
+      - href: workouts.qmd
+        text: Workouts
+      - href: methods.qmd
+        text: Methods
+  page-footer:
+    center: "Built with Quarto · Data from WHOOP · Inspired by FDA with R"
+
+format:
+  html:
+    theme: cosmo
+    css: styles.css
+    toc: true
+    toc-depth: 3
+    fig-width: 10
+    fig-height: 5
+    fig-dpi: 150
+    code-fold: true
+    code-summary: "Show code"
+    df-print: paged
+    self-contained: false
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: true

@@ -1,0 +1,15 @@
+# R
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# Quarto cache and intermediates
+_freeze/
+.quarto/
+*_cache/
+*_files/
+
+# OS
+.DS_Store
+Thumbs.db

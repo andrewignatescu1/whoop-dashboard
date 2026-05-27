@@ -1,0 +1,101 @@
+---
+title: "Methods & Data Notes"
+subtitle: "Data provenance, processing decisions, and analytical approach"
+---
+
+```{r setup}
+source("R/load_data.R")
+```
+
+## Data source
+
+All data come from the **WHOOP 4.0** wearable worn continuously from `r format(min(cycles$date), "%B %d, %Y")` through `r format(max(cycles$date), "%B %d, %Y")`. Three CSV exports were used:
+
+| File | Content | Rows |
+|---|---|---|
+| `physiological_cycles.csv` | Daily recovery, HRV, RHR, strain, and embedded sleep summary | `r nrow(cycles_raw)` |
+| `sleeps.csv` | Individual sleep sessions including naps, with stage breakdown | `r nrow(sleeps_raw)` |
+| `workouts.csv` | Individual workout sessions with HR zones and strain | `r nrow(workouts_raw)` |
+
+Data were exported directly from the WHOOP app under *Account → My Data → Export*.
+
+---
+
+## Processing decisions
+
+**Physiological cycles.** Rows with missing `Recovery score %` were dropped (`r sum(is.na(cycles_raw[["Recovery score %"]]))` rows removed). Rows where RHR > 80 bpm appear in the raw data from a known multi-day anomaly period (late July 2023) and are retained in the dataset but filtered out of correlation plots where noted.
+
+**Sleeps.** The `sleeps.csv` file includes both overnight sleeps and naps (flagged via the `Nap` column). Naps are excluded from stage composition and sleep debt analyses but included in session counts.
+
+**Workouts.** Activity names were consolidated from `r n_distinct(workouts_raw[["Activity name"]])` distinct labels into 5 groups (Swimming, Lifting, Running, Basketball, Other). The `Strength Trainer` label was merged into Lifting.
+
+**Rolling means.** All 7-day rolling averages use `zoo::rollmean()` with `align = "right"` and `na.rm = TRUE`, meaning the value at day *t* reflects the mean of the current and previous 6 days with available data. The 28-day rolling means on the sleep page use the same approach.
+
+---
+
+## Analytical inspiration
+
+This project is modeled on the exploratory visualization approach in:
+
+> Goldsmith, J., Scheipl, F., Huang, L., Wrobel, J., Di, C., Gellar, J., ... & Crainiceanu, C. (2024). *Functional Data Analysis with R*. Chapman & Hall / CRC.
+
+Specific techniques borrowed:
+- **Spaghetti + mean overlay** (Chapter 1 CD4 example) → Recovery & HRV page
+- **Stacked composition charts** (COVID mortality page) → Sleep stage composition
+- **Circadian timing plots** (NHANES MIMS page) → Workout timing analysis
+- **Scatter with smooth** (CD4 individual trajectory plots) → Strain vs. recovery scatter
+
+---
+
+## Rendering this site
+
+This is a **Quarto website** rendered with `quarto render` and deployed via GitHub Pages from the `docs/` folder.
+
+**R packages required:**
+
+```r
+install.packages(c(
+  "tidyverse",
+  "lubridate",
+  "zoo",
+  "patchwork",
+  "ggridges",
+  "glue",
+  "htmltools",
+  "scales"
+))
+```
+
+**To render locally:**
+
+```bash
+# From the project root
+quarto render
+
+# Or preview with live reload
+quarto preview
+```
+
+**To deploy to GitHub Pages:**
+
+1. Push the repository to GitHub
+2. Go to Settings → Pages → Source → Deploy from a branch
+3. Select branch: `main`, folder: `/docs`
+4. Hit Save — the site will be live at `https://<username>.github.io/<repo-name>/`
+
+---
+
+## Known limitations
+
+- WHOOP's HRV measurement uses a 5-minute morning calibration window, which can be sensitive to movement or breathing irregularities — single-day outliers should not be over-interpreted.
+- The sensor was removed during the late July 2023 anomaly period (RHR showing 120 bpm is a known artifact when the band is off but still recording).
+- Sleep stage classification is proprietary and not validated against polysomnography.
+- Workout start times are rounded to the hour in the export format.
+
+---
+
+## Session info
+
+```{r session-info}
+sessionInfo()
+```

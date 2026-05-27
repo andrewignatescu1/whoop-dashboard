@@ -1,0 +1,116 @@
+---
+title: "WHOOP Biometrics · Personal Dashboard"
+subtitle: "13 months of physiological data — March 2023 to April 2024"
+---
+
+```{r setup}
+source("R/load_data.R")
+library(patchwork)
+library(ggridges)
+```
+
+This site explores a year-plus of personal data from the WHOOP wearable, applying exploratory analysis techniques inspired by the *Functional Data Analysis with R* textbook. Each daily measurement is treated as a sample from an underlying physiological process — the goal is to visualize longitudinal patterns, identify structure, and surface insights that the WHOOP app alone doesn't show.
+
+---
+
+## At a glance
+
+```{r metric-cards, echo=FALSE}
+htmltools::HTML(glue::glue('
+<div class="metric-grid">
+  <div class="metric-card blue">
+    <div class="label">Days tracked</div>
+    <div class="value">{n_days}</div>
+    <div class="sub">{date_range}</div>
+  </div>
+  <div class="metric-card green">
+    <div class="label">Avg recovery</div>
+    <div class="value">{avg_recovery}%</div>
+    <div class="sub">on the WHOOP 0–100 scale</div>
+  </div>
+  <div class="metric-card blue">
+    <div class="label">Avg HRV</div>
+    <div class="value">{avg_hrv} ms</div>
+    <div class="sub">resting baseline</div>
+  </div>
+  <div class="metric-card red">
+    <div class="label">Avg RHR</div>
+    <div class="value">{avg_rhr} bpm</div>
+    <div class="sub">resting heart rate</div>
+  </div>
+  <div class="metric-card amber">
+    <div class="label">Total workouts</div>
+    <div class="value">{n_workouts}</div>
+    <div class="sub">{n_swims} swimming sessions</div>
+  </div>
+  <div class="metric-card green">
+    <div class="label">Peak HRV</div>
+    <div class="value">{peak_hrv} ms</div>
+    <div class="sub">{format(peak_hrv_date, "%b %d, %Y")}</div>
+  </div>
+</div>
+'))
+```
+
+---
+
+## Recovery over time
+
+The plot below shows daily recovery scores with a 7-day rolling mean smoothing out day-to-day noise — analogous to the functional mean estimators in Chapter 1 of the FDA textbook.
+
+```{r recovery-overview, fig.cap="Daily recovery (points) with 7-day rolling mean (line). Color encodes WHOOP recovery zones: green ≥ 67%, yellow 34–66%, red < 34%."}
+ggplot(cycles, aes(x = date)) +
+  geom_point(aes(y = recovery, color = rec_zone), alpha = 0.45, size = 1.2, shape = 16) +
+  geom_line(aes(y = recovery_7), color = "#111111", linewidth = 0.9, na.rm = TRUE) +
+  scale_color_manual(
+    values = c(Green = "#1D9E75", Yellow = "#BA7517", Red = "#E24B4A"),
+    name = "Zone"
+  ) +
+  scale_x_date(date_breaks = "2 months", date_labels = "%b '%y") +
+  scale_y_continuous(limits = c(0, 100), breaks = c(0, 33, 67, 100)) +
+  geom_hline(yintercept = c(34, 67), linetype = "dashed", color = "grey70", linewidth = 0.4) +
+  labs(
+    title    = "Daily recovery score",
+    subtitle = "7-day rolling mean overlaid in black",
+    x = NULL, y = "Recovery (%)"
+  ) +
+  theme_whoop()
+```
+
+---
+
+## Recovery zone distribution
+
+```{r zone-dist, fig.height=3.5, fig.cap="Monthly proportion of days in each recovery zone, showing how readiness varied across the year."}
+cycles |>
+  filter(!is.na(rec_zone)) |>
+  count(month, rec_zone) |>
+  group_by(month) |>
+  mutate(pct = n / sum(n)) |>
+  ungroup() |>
+  ggplot(aes(x = month, y = pct, fill = rec_zone)) +
+  geom_col(width = 25) +
+  scale_fill_manual(
+    values = c(Green = "#1D9E75", Yellow = "#BA7517", Red = "#E24B4A"),
+    name = "Zone"
+  ) +
+  scale_x_date(date_breaks = "2 months", date_labels = "%b '%y") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title    = "Monthly recovery zone composition",
+    subtitle = "Stack shows proportion of Green / Yellow / Red days per month",
+    x = NULL, y = "Proportion of days"
+  ) +
+  theme_whoop()
+```
+
+---
+
+## What's in each section
+
+| Page | Content |
+|---|---|
+| [Recovery & HRV](recovery.qmd) | HRV trajectories, RHR trends, strain relationship |
+| [Sleep](sleep.qmd) | Stage composition, sleep debt, consistency |
+| [Workouts](workouts.qmd) | Swim analysis, timing patterns, HR zones |
+| [Methods](methods.qmd) | Data provenance, smoothing approach, notes |

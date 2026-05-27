@@ -1,0 +1,162 @@
+---
+title: "Recovery & HRV"
+subtitle: "Heart rate variability trajectories and autonomic nervous system readiness"
+---
+
+```{r setup}
+source("R/load_data.R")
+library(patchwork)
+```
+
+HRV — the millisecond variation between heartbeats — is the closest non-invasive proxy for autonomic nervous system readiness. Higher HRV generally signals better recovery; lower HRV reflects accumulated stress, illness, or overtraining. WHOOP measures it each morning during a brief calibration window.
+
+---
+
+## HRV over time
+
+```{r hrv-timeline, fig.height=5.5, fig.cap="Daily HRV (points) and 7-day rolling mean (line). Colored bands mark the interquartile range across the full period. Notable: the July 2023 RHR/HRV anomaly is visible as several days of very low HRV coinciding with an RHR spike to 120 bpm — likely illness or injury."}
+
+# IQR reference band
+hrv_q <- quantile(cycles$hrv, probs = c(0.25, 0.75), na.rm = TRUE)
+
+ggplot(cycles, aes(x = date)) +
+  annotate("rect",
+    xmin = min(cycles$date), xmax = max(cycles$date),
+    ymin = hrv_q[1], ymax = hrv_q[2],
+    fill = "#3266ad", alpha = 0.07
+  ) +
+  geom_point(aes(y = hrv, color = rec_zone), alpha = 0.4, size = 1.3, shape = 16) +
+  geom_line(aes(y = hrv_7), color = "#3266ad", linewidth = 1, na.rm = TRUE) +
+  geom_hline(yintercept = avg_hrv, linetype = "dotted", color = "grey50") +
+  scale_color_manual(
+    values = c(Green = "#1D9E75", Yellow = "#BA7517", Red = "#E24B4A"),
+    name = "Recovery zone"
+  ) +
+  scale_x_date(date_breaks = "2 months", date_labels = "%b '%y") +
+  annotate("text", x = min(cycles$date) + 5, y = avg_hrv + 4,
+           label = paste0("Mean = ", avg_hrv, " ms"), size = 3, color = "grey50") +
+  labs(
+    title    = "Heart rate variability (HRV)",
+    subtitle = "Blue band = interquartile range · Dotted line = overall mean",
+    x = NULL, y = "HRV (ms)"
+  ) +
+  theme_whoop()
+```
+
+---
+
+## HRV vs. Resting Heart Rate
+
+RHR and HRV should move in opposite directions under healthy adaptation — high HRV paired with low RHR is the ideal combination. The scatter below shows this inverse relationship in your data.
+
+```{r hrv-rhr-scatter, fig.height=4.5, fig.cap="Each point is one day. The negative correlation between HRV and RHR is clearly visible; outliers in the top-right corner (high HRV *and* high RHR) typically coincide with illness events. Points filtered to RHR < 80 to exclude sensor artifacts."}
+cycles |>
+  filter(!is.na(hrv), !is.na(rhr), rhr < 80) |>
+  ggplot(aes(x = rhr, y = hrv, color = rec_zone)) +
+  geom_point(alpha = 0.5, size = 1.8, shape = 16) +
+  geom_smooth(method = "lm", se = TRUE, color = "#111", linewidth = 0.8,
+              fill = "grey85", alpha = 0.5) +
+  scale_color_manual(
+    values = c(Green = "#1D9E75", Yellow = "#BA7517", Red = "#E24B4A"),
+    name = "Recovery zone"
+  ) +
+  labs(
+    title    = "HRV vs. resting heart rate",
+    subtitle = "Linear trend with 95% confidence band",
+    x = "Resting heart rate (bpm)", y = "HRV (ms)"
+  ) +
+  theme_whoop()
+```
+
+```{r hrv-rhr-corr}
+cor_val <- cor(cycles$hrv, cycles$rhr, use = "complete.obs") |> round(3)
+```
+
+> The Pearson correlation between daily HRV and RHR is **r = `r cor_val`**, confirming the expected inverse relationship.
+
+---
+
+## Rolling means: HRV, RHR, and Strain
+
+This three-panel view (modeled after the NHANES multi-panel plots in the FDA textbook) shows 7-day rolling means for all three key recovery metrics simultaneously, making it easier to spot periods where all three converged or diverged.
+
+```{r three-panel, fig.height=7, fig.cap="7-day rolling averages for HRV, RHR, and day strain. Shaded regions highlight the two major illness/anomaly events (early April 2023 and late July 2023)."}
+
+illness_bands <- tibble(
+  xmin = as_date(c("2023-04-03", "2023-07-26")),
+  xmax = as_date(c("2023-04-15", "2023-07-31"))
+)
+
+make_band <- function(p) {
+  p + geom_rect(
+    data = illness_bands,
+    aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf),
+    fill = "#E24B4A", alpha = 0.08, inherit.aes = FALSE
+  ) +
+  scale_x_date(date_breaks = "2 months", date_labels = "%b '%y") +
+  theme_whoop() +
+  labs(x = NULL)
+}
+
+p1 <- ggplot(cycles, aes(x = date, y = hrv_7)) +
+  geom_line(color = "#3266ad", linewidth = 0.9, na.rm = TRUE) +
+  labs(title = "HRV — 7-day rolling mean", y = "ms")
+
+p2 <- ggplot(cycles, aes(x = date, y = rhr_7)) +
+  geom_line(color = "#E24B4A", linewidth = 0.9, na.rm = TRUE) +
+  labs(title = "Resting heart rate — 7-day rolling mean", y = "bpm")
+
+p3 <- ggplot(cycles, aes(x = date, y = strain_7)) +
+  geom_line(color = "#BA7517", linewidth = 0.9, na.rm = TRUE) +
+  labs(title = "Day strain — 7-day rolling mean", y = "strain score")
+
+make_band(p1) / make_band(p2) / make_band(p3)
+```
+
+::: {.callout-note}
+**Red shaded regions** mark two anomalous periods: early April 2023 (recovery crashed to 1% on consecutive days, HRV dropped sharply) and late July 2023 (RHR spiked to 120 bpm for several days — almost certainly illness or an injury event).
+:::
+
+---
+
+## Day-of-week patterns
+
+```{r dow-box, fig.height=4, fig.cap="Distribution of HRV by day of week. Sunday typically shows the highest HRV (post-rest), while mid-week shows more variability from accumulated training load."}
+cycles |>
+  filter(!is.na(hrv)) |>
+  ggplot(aes(x = day_of_week, y = hrv, fill = day_of_week)) +
+  geom_boxplot(alpha = 0.7, outlier.size = 1, outlier.alpha = 0.4, width = 0.6) +
+  geom_jitter(width = 0.15, alpha = 0.2, size = 0.8) +
+  scale_fill_manual(values = rep(c("#3266ad","#1D9E75","#BA7517","#E24B4A",
+                                    "#7F77DD","#888780","#3266ad"), 1)) +
+  labs(
+    title    = "HRV by day of week",
+    subtitle = "Boxplot with jittered raw values overlaid",
+    x = NULL, y = "HRV (ms)"
+  ) +
+  theme_whoop() +
+  theme(legend.position = "none")
+```
+
+---
+
+## Recovery score distribution
+
+```{r rec-hist, fig.height=3.5}
+cycles |>
+  ggplot(aes(x = recovery, fill = rec_zone)) +
+  geom_histogram(binwidth = 5, color = "white", linewidth = 0.3) +
+  geom_vline(xintercept = avg_recovery, linetype = "dashed", color = "#111") +
+  scale_fill_manual(
+    values = c(Green = "#1D9E75", Yellow = "#BA7517", Red = "#E24B4A"),
+    name = "Zone"
+  ) +
+  annotate("text", x = avg_recovery + 2, y = 30, label = paste0("Mean = ", avg_recovery, "%"),
+           size = 3.2, hjust = 0, color = "#111") +
+  labs(
+    title = "Recovery score distribution",
+    subtitle = "Across all tracked days",
+    x = "Recovery (%)", y = "Days"
+  ) +
+  theme_whoop()
+```

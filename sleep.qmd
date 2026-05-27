@@ -1,0 +1,169 @@
+---
+title: "Sleep"
+subtitle: "Stage composition, architecture trends, and sleep debt across 13 months"
+---
+
+```{r setup}
+source("R/load_data.R")
+library(patchwork)
+library(tidyr)
+```
+
+Sleep architecture — the nightly mix of light, deep (slow-wave), and REM sleep — reflects both physiological need and recovery quality. The analyses here treat each night as a functional observation and look at how the composition changed over time.
+
+---
+
+## Monthly sleep stage composition
+
+Modeled after the COVID mortality composition plots in the FDA textbook, this stacked bar chart shows how average nightly sleep stage proportions shifted month to month.
+
+```{r sleep-stack, fig.height=5, fig.cap="Average nightly minutes per sleep stage, stacked by month. Only main overnight sleeps are included (naps excluded). Note the higher awake time in winter months and the drop in all stages in March–April 2024, which reflects fewer tracked nights in those months."}
+
+monthly_sleep |>
+  pivot_longer(cols = c(light_avg, deep_avg, rem_avg, awake_avg),
+               names_to = "stage", values_to = "minutes") |>
+  mutate(
+    stage = recode(stage,
+      light_avg = "Light", deep_avg = "Deep (SWS)",
+      rem_avg   = "REM",   awake_avg = "Awake"
+    ) |> factor(levels = c("Light", "Deep (SWS)", "REM", "Awake"))
+  ) |>
+  ggplot(aes(x = month, y = minutes, fill = stage)) +
+  geom_col(width = 25, color = "white", linewidth = 0.2) +
+  scale_fill_manual(
+    values = c(
+      "Light"       = "#B5D4F4",
+      "Deep (SWS)"  = "#3266ad",
+      "REM"         = "#1D9E75",
+      "Awake"       = "#D3D1C7"
+    ),
+    name = "Stage"
+  ) +
+  scale_x_date(date_breaks = "2 months", date_labels = "%b '%y") +
+  labs(
+    title    = "Monthly average sleep stage composition",
+    subtitle = "Average minutes per stage per night (main sleeps only)",
+    x = NULL, y = "Minutes per night"
+  ) +
+  theme_whoop()
+```
+
+---
+
+## Deep sleep and REM over time
+
+Deep sleep (slow-wave sleep) is critical for physical recovery; REM is linked to cognitive consolidation. Here we track their 4-week rolling means separately.
+
+```{r deep-rem, fig.height=5, fig.cap="4-week rolling mean of nightly deep and REM sleep (minutes). Both series are smoothed to reduce nightly noise. Deep sleep shows a gradual upward trend through mid-2023; REM peaks in January 2024."}
+
+main_sleeps |>
+  filter(!is.na(deep_min), !is.na(rem_min)) |>
+  arrange(date) |>
+  mutate(
+    deep_roll = rollmean(deep_min, 28, fill = NA, align = "right", na.rm = TRUE),
+    rem_roll  = rollmean(rem_min,  28, fill = NA, align = "right", na.rm = TRUE)
+  ) |>
+  pivot_longer(cols = c(deep_roll, rem_roll), names_to = "metric", values_to = "minutes") |>
+  mutate(metric = recode(metric, deep_roll = "Deep (SWS)", rem_roll = "REM")) |>
+  ggplot(aes(x = date, y = minutes, color = metric)) +
+  geom_line(linewidth = 1.1, na.rm = TRUE) +
+  scale_color_manual(values = c("Deep (SWS)" = "#3266ad", "REM" = "#1D9E75"), name = NULL) +
+  scale_x_date(date_breaks = "2 months", date_labels = "%b '%y") +
+  labs(
+    title    = "Deep sleep and REM — 28-day rolling mean",
+    subtitle = "Smoothed trajectories showing longer-term trends",
+    x = NULL, y = "Minutes per night"
+  ) +
+  theme_whoop()
+```
+
+---
+
+## Sleep efficiency distribution
+
+Sleep efficiency = asleep time / time in bed. Values above 85% are generally considered good.
+
+```{r sleep-eff, fig.height=3.5, fig.cap="Distribution of sleep efficiency across all nights. The dashed line marks the 85% clinical threshold."}
+main_sleeps |>
+  filter(!is.na(sleep_eff)) |>
+  ggplot(aes(x = sleep_eff)) +
+  geom_histogram(binwidth = 3, fill = "#3266ad", color = "white", alpha = 0.8) +
+  geom_vline(xintercept = 85, linetype = "dashed", color = "#E24B4A", linewidth = 0.8) +
+  annotate("text", x = 87, y = 40, label = "85% threshold",
+           color = "#E24B4A", size = 3.2, hjust = 0) +
+  labs(
+    title    = "Sleep efficiency distribution",
+    subtitle = "Percentage of time in bed actually asleep",
+    x = "Sleep efficiency (%)", y = "Nights"
+  ) +
+  theme_whoop()
+```
+
+---
+
+## Sleep debt trajectory
+
+WHOOP tracks cumulative sleep debt — how many minutes short of your sleep need you are. Sustained debt is associated with impaired recovery and performance.
+
+```{r sleep-debt, fig.height=4, fig.cap="Daily sleep debt (points, colored by magnitude) with 7-day rolling mean. Peaks in debt often correspond to low-recovery periods seen in the Recovery page."}
+main_sleeps |>
+  filter(!is.na(sleep_debt)) |>
+  arrange(date) |>
+  mutate(
+    debt_roll   = rollmean(sleep_debt, 7, fill = NA, align = "right", na.rm = TRUE),
+    debt_zone   = case_when(
+      sleep_debt <= 30  ~ "Low",
+      sleep_debt <= 90  ~ "Moderate",
+      TRUE              ~ "High"
+    ) |> factor(levels = c("Low", "Moderate", "High"))
+  ) |>
+  ggplot(aes(x = date)) +
+  geom_point(aes(y = sleep_debt, color = debt_zone), alpha = 0.35, size = 1.1) +
+  geom_line(aes(y = debt_roll), color = "#111", linewidth = 0.9, na.rm = TRUE) +
+  scale_color_manual(
+    values = c(Low = "#1D9E75", Moderate = "#BA7517", High = "#E24B4A"),
+    name = "Debt level"
+  ) +
+  scale_x_date(date_breaks = "2 months", date_labels = "%b '%y") +
+  labs(
+    title    = "Sleep debt over time",
+    subtitle = "Minutes below nightly sleep need · 7-day rolling mean in black",
+    x = NULL, y = "Sleep debt (min)"
+  ) +
+  theme_whoop()
+```
+
+---
+
+## Sleep performance vs. next-day recovery
+
+Does better sleep tonight predict better recovery tomorrow? We join sleep performance to the *following* day's recovery score.
+
+```{r sleep-recovery-lag, fig.height=4.5, fig.cap="Sleep performance (%) on the x-axis vs. next-day recovery score on the y-axis. Each point is one night. The positive trend suggests sleep quality does predict next-day readiness, but with substantial scatter — recovery is multifactorial."}
+
+sleep_lag <- main_sleeps |>
+  filter(!is.na(sleep_perf)) |>
+  select(date, sleep_perf) |>
+  mutate(next_date = date + 1) |>
+  left_join(cycles |> select(date, recovery, rec_zone), by = c("next_date" = "date")) |>
+  filter(!is.na(recovery))
+
+sleep_lag_cor <- cor(sleep_lag$sleep_perf, sleep_lag$recovery, use = "complete.obs") |> round(3)
+
+ggplot(sleep_lag, aes(x = sleep_perf, y = recovery, color = rec_zone)) +
+  geom_point(alpha = 0.45, size = 1.8, shape = 16) +
+  geom_smooth(method = "lm", se = TRUE, color = "#111", linewidth = 0.8,
+              fill = "grey85", alpha = 0.5) +
+  scale_color_manual(
+    values = c(Green = "#1D9E75", Yellow = "#BA7517", Red = "#E24B4A"),
+    name = "Next-day zone"
+  ) +
+  labs(
+    title    = "Sleep performance → next-day recovery",
+    subtitle = paste0("Pearson r = ", sleep_lag_cor),
+    x = "Sleep performance (%)", y = "Next-day recovery (%)"
+  ) +
+  theme_whoop()
+```
+
+> **r = `r sleep_lag_cor`** — a modest positive correlation. Sleep quality is one of the strongest predictors of next-day recovery among the variables tracked here.

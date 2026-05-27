@@ -1,0 +1,178 @@
+---
+title: "Workouts"
+subtitle: "Swimming dominance, timing patterns, HR zones, and strain vs. recovery"
+---
+
+```{r setup}
+source("R/load_data.R")
+library(patchwork)
+```
+
+With 269 swimming sessions out of 364 total workouts, swimming defines the training load. This page breaks down workout patterns — when you swim, how hard, and how it relates to recovery.
+
+---
+
+## Activity breakdown
+
+```{r activity-bar, fig.height=3.5, fig.cap="Total sessions by activity type across the 13-month period."}
+workouts |>
+  count(activity_grp) |>
+  mutate(activity_grp = fct_reorder(activity_grp, n)) |>
+  ggplot(aes(x = n, y = activity_grp, fill = activity_grp)) +
+  geom_col(alpha = 0.85, width = 0.65) +
+  geom_text(aes(label = n), hjust = -0.3, size = 3.5) +
+  scale_fill_manual(values = c(
+    Swimming = "#3266ad", Lifting = "#1D9E75", Running = "#BA7517",
+    Basketball = "#7F77DD", Other = "#888780"
+  )) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.12))) +
+  labs(title = "Total sessions by activity", x = "Sessions", y = NULL) +
+  theme_whoop() +
+  theme(legend.position = "none")
+```
+
+---
+
+## Workout timing: when do you train?
+
+The FDA textbook plots circadian patterns in NHANES accelerometry data; here we apply the same idea to workout start times — showing *when* each activity tends to occur throughout the day.
+
+```{r workout-timing, fig.height=4.5, fig.cap="Session count by hour of day for Swimming and Weightlifting. Swimming shows two clear peaks: early morning (~5am) and afternoon (~3pm). Weightlifting is almost exclusively an evening (5pm) activity."}
+workouts |>
+  filter(activity_grp %in% c("Swimming", "Lifting"), !is.na(workout_hour)) |>
+  count(activity_grp, workout_hour) |>
+  ggplot(aes(x = workout_hour, y = n, fill = activity_grp)) +
+  geom_col(position = "dodge", alpha = 0.85, width = 0.8) +
+  scale_fill_manual(values = c(Swimming = "#3266ad", Lifting = "#1D9E75"), name = NULL) +
+  scale_x_continuous(
+    breaks = c(0, 5, 6, 9, 12, 15, 17, 20),
+    labels = c("12am", "5am", "6am", "9am", "12pm", "3pm", "5pm", "8pm")
+  ) +
+  labs(
+    title    = "Workout start time by activity",
+    subtitle = "Swimming peaks at 5am and 3pm; weightlifting at 5pm",
+    x = "Hour of day", y = "Sessions"
+  ) +
+  theme_whoop()
+```
+
+---
+
+## Swimming: monthly volume
+
+```{r swim-volume, fig.height=4, fig.cap="Monthly swimming session count and average duration. Duration is fairly stable (~95–105 min/session) while volume peaks in spring-summer 2023."}
+workouts |>
+  filter(activity_grp == "Swimming") |>
+  group_by(month) |>
+  summarise(
+    sessions     = n(),
+    avg_duration = mean(duration_min, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  ggplot(aes(x = month)) +
+  geom_col(aes(y = sessions * 5), fill = "#3266ad", alpha = 0.3, width = 25) +
+  geom_line(aes(y = avg_duration), color = "#3266ad", linewidth = 1.2) +
+  geom_point(aes(y = avg_duration), color = "#3266ad", size = 2.5) +
+  scale_x_date(date_breaks = "2 months", date_labels = "%b '%y") +
+  scale_y_continuous(
+    name = "Avg duration (min)",
+    sec.axis = sec_axis(~ . / 5, name = "Sessions (bars)")
+  ) +
+  labs(
+    title    = "Monthly swimming volume",
+    subtitle = "Bars = session count (right axis) · Line = avg duration (left axis)",
+    x = NULL
+  ) +
+  theme_whoop()
+```
+
+---
+
+## Heart rate zones during swimming
+
+HR zone time reveals training intensity distribution. Zone 2 (aerobic base) and Zone 3 (tempo) dominate, with intermittent Zone 4–5 work.
+
+```{r hr-zones, fig.height=4, fig.cap="Average percentage of swimming session time spent in each HR zone. Zone 1 = very light, Zone 5 = maximal effort."}
+workouts |>
+  filter(activity_grp == "Swimming", !is.na(z1)) |>
+  summarise(
+    `Zone 1` = mean(z1, na.rm = TRUE),
+    `Zone 2` = mean(z2, na.rm = TRUE),
+    `Zone 3` = mean(z3, na.rm = TRUE),
+    `Zone 4` = mean(z4, na.rm = TRUE),
+    `Zone 5` = mean(z5, na.rm = TRUE)
+  ) |>
+  pivot_longer(everything(), names_to = "zone", values_to = "pct") |>
+  mutate(zone = factor(zone, levels = paste("Zone", 1:5))) |>
+  ggplot(aes(x = zone, y = pct, fill = zone)) +
+  geom_col(alpha = 0.85, width = 0.6) +
+  geom_text(aes(label = paste0(round(pct), "%")), vjust = -0.4, size = 3.5) +
+  scale_fill_manual(values = c(
+    "Zone 1" = "#B5D4F4", "Zone 2" = "#3266ad",
+    "Zone 3" = "#1D9E75", "Zone 4" = "#BA7517", "Zone 5" = "#E24B4A"
+  )) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+  labs(
+    title    = "Average HR zone distribution — swimming",
+    subtitle = "Percentage of session time in each zone",
+    x = NULL, y = "% of session time"
+  ) +
+  theme_whoop() +
+  theme(legend.position = "none")
+```
+
+---
+
+## Strain vs. same-day recovery
+
+Like the CD4 scatter in the FDA textbook, this plot treats each workout as a functional observation and asks: does recovery predict how hard you train?
+
+```{r strain-recovery, fig.height=5, fig.cap="Each point is a swimming session. X-axis: same-day recovery score. Y-axis: session strain. Point size encodes duration. Color encodes recovery zone. The near-zero correlation suggests you trained at consistent intensity regardless of readiness."}
+swim_data <- workouts |>
+  filter(activity_grp == "Swimming", !is.na(w_strain), !is.na(recovery))
+
+swim_cor <- cor(swim_data$recovery, swim_data$w_strain, use = "complete.obs") |> round(3)
+
+ggplot(swim_data, aes(x = recovery, y = w_strain, color = rec_zone,
+                       size = duration_min)) +
+  geom_point(alpha = 0.5, shape = 16) +
+  geom_smooth(method = "lm", se = TRUE, color = "#111", linewidth = 0.8,
+              fill = "grey85", alpha = 0.4, inherit.aes = FALSE,
+              aes(x = recovery, y = w_strain)) +
+  scale_color_manual(
+    values = c(Green = "#1D9E75", Yellow = "#BA7517", Red = "#E24B4A"),
+    name = "Recovery zone"
+  ) +
+  scale_size_continuous(name = "Duration (min)", range = c(1.5, 6), breaks = c(60, 90, 120)) +
+  labs(
+    title    = "Swim session strain vs. same-day recovery",
+    subtitle = paste0("Pearson r = ", swim_cor, " — nearly zero correlation"),
+    x = "Recovery score (%)", y = "Session strain"
+  ) +
+  theme_whoop()
+```
+
+::: {.callout-note}
+**r = `r swim_cor`** — essentially no relationship between how recovered you were and how hard you swam. This is common in competitive swimmers who follow structured training programs and push through regardless of readiness signals.
+:::
+
+---
+
+## Session strain distribution
+
+```{r strain-hist, fig.height=3.5}
+workouts |>
+  filter(!is.na(w_strain)) |>
+  ggplot(aes(x = w_strain, fill = activity_grp)) +
+  geom_histogram(binwidth = 1, color = "white", alpha = 0.85) +
+  scale_fill_manual(values = c(
+    Swimming = "#3266ad", Lifting = "#1D9E75", Running = "#BA7517",
+    Basketball = "#7F77DD", Other = "#888780"
+  ), name = "Activity") +
+  labs(
+    title    = "Workout strain distribution",
+    subtitle = "WHOOP strain score (0–21 scale)",
+    x = "Session strain", y = "Sessions"
+  ) +
+  theme_whoop()
+```
