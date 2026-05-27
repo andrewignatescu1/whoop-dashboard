@@ -1,12 +1,10 @@
-# R/load_data.R
-# Shared data loading, cleaning, and feature engineering for all pages.
-# Source this at the top of each .qmd with: source("R/load_data.R")
+
 
 library(tidyverse)
 library(lubridate)
 library(zoo)
 
-# ── Raw imports ────────────────────────────────────────────────────────────────
+# ── Raw imports ──────────────────────────────
 
 cycles_raw <- read_csv("data/physiological_cycles.csv", show_col_types = FALSE)
 sleeps_raw <- read_csv("data/sleeps.csv",               show_col_types = FALSE)
